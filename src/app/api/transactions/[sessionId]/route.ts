@@ -62,8 +62,12 @@ export async function POST(
 
     const { pusherServer } = await import('@/lib/pusher');
     const txPayload = { id: newTx.id, payer_name: newTx.payerName, amount: newTx.amount, utr: newTx.utr, payment_time: newTx.paymentTime, verified: newTx.verified, rejected: newTx.rejected };
-    await pusherServer.trigger(`session-${sessionId}`, 'new-payment', { transaction: txPayload });
-    await pusherServer.trigger(`session-${sessionId}`, 'total-updated', { totalAmount });
+    try {
+      await pusherServer.trigger(`session-${sessionId}`, 'new-payment', { transaction: txPayload });
+      await pusherServer.trigger(`session-${sessionId}`, 'total-updated', { totalAmount });
+    } catch (pusherErr) {
+      console.error('Pusher trigger failed (non-fatal):', pusherErr);
+    }
 
     return NextResponse.json({ transaction: txPayload, totalAmount }, { status: 201 });
   } catch (err) {

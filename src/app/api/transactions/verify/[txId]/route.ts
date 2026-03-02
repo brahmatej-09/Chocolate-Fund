@@ -22,11 +22,16 @@ export async function PATCH(
 
     const tx = await prisma.transaction.update({ where: { id: existing.id }, data: { verified: true } });
 
-    await pusherServer.trigger(`session-${tx.sessionId}`, 'payment-verified', { transactionId: tx.id });
+    try {
+      await pusherServer.trigger(`session-${tx.sessionId}`, 'payment-verified', { transactionId: tx.id });
+    } catch (pusherErr) {
+      console.error('Pusher trigger failed (non-fatal):', pusherErr);
+    }
 
     return NextResponse.json({ message: 'Transaction verified', transaction: tx });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ message: 'Server error' }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ message: 'Server error', detail: message }, { status: 500 });
   }
 }
