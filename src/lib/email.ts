@@ -213,3 +213,136 @@ export async function sendNewPaymentAlert(
     console.warn('Payment alert email failed:', (err as Error).message);
   }
 }
+
+// ─── Batch Deleted Report ──────────────────────────────────────────────────────
+
+interface BatchSession {
+  title: string;
+  amount: number | string;
+  transactions: {
+    payerName: string;
+    studentRollNo: string | null;
+    amount: number | string;
+    utr: string | null;
+    paymentTime: Date | string;
+    verified: boolean;
+    rejected: boolean;
+  }[];
+}
+
+export async function sendBatchDeletedReport(
+  toEmail: string,
+  adminName: string,
+  batch: { name: string; createdAt: Date | string; sessions: BatchSession[] }
+) {
+  try {
+    const allTx = batch.sessions.flatMap(s =>
+      s.transactions.map(t => ({ ...t, sessionTitle: s.title }))
+    );
+    const totalCollected = allTx
+      .filter(t => !t.rejected)
+      .reduce((sum, t) => sum + parseFloat(String(t.amount)), 0);
+    const verifiedCount = allTx.filter(t => t.verified).length;
+    const pendingCount  = allTx.filter(t => !t.verified && !t.rejected).length;
+    const createdStr = new Date(batch.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' });
+
+    // Per-session summary rows
+    const sessionRows = batch.sessions.map((s, i) => {
+      const sCollected = s.transactions
+        .filter(t => !t.rejected)
+        .reduce((sum, t) => sum + parseFloat(String(t.amount)), 0);
+      return `<tr style="background:${i % 2 === 0 ? '#f9fafb' : '#fff'}">
+        <td style="padding:9px 14px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #e5e7eb">${s.title}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #e5e7eb">₹${parseFloat(String(s.amount)).toFixed(2)}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #e5e7eb">${s.transactions.length}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #e5e7eb;color:#16a34a;font-weight:600">₹${sCollected.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+
+    // Full transaction rows
+    const txRows = allTx.length === 0
+      ? `<tr><td colspan="7" style="padding:20px;text-align:center;color:#9ca3af">No transactions recorded.</td></tr>`
+      : allTx.map((t, i) => `
+        <tr style="background:${i % 2 === 0 ? '#f9fafb' : '#fff'}">
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb">${t.payerName}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:12px">${t.studentRollNo ?? '—'}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;color:#16a34a;font-weight:600">₹${parseFloat(String(t.amount)).toFixed(2)}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:12px">${t.utr ?? '—'}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280">${t.sessionTitle}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb">
+            <span style="padding:2px 8px;border-radius:999px;font-size:11px;background:${t.rejected ? '#fee2e2' : t.verified ? '#dcfce7' : '#fef9c3'};color:${t.rejected ? '#991b1b' : t.verified ? '#166534' : '#713f12'}">
+              ${t.rejected ? '❌ Rejected' : t.verified ? '✅ Verified' : '⏳ Pending'}
+            </span>
+          </td>
+        </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:20px">
+      <div style="max-width:760px;margin:0 auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+        <div style="background:#7c3aed;padding:28px 32px;color:white">
+          <h1 style="margin:0;font-size:22px">🗑️ Batch Deleted — Final Report</h1>
+          <p style="margin:6px 0 0;opacity:0.85;font-size:15px">Batch: <strong>${batch.name}</strong></p>
+          <p style="margin:4px 0 0;opacity:0.7;font-size:13px">Created: ${createdStr}</p>
+        </div>
+        <div style="padding:24px 32px;background:#f5f3ff;border-bottom:1px solid #ede9fe">
+          <p style="margin:0 0 16px;font-size:15px;color:#374151">Hello <strong>${adminName}</strong>, the batch <strong>"${batch.name}"</strong> has been deleted. Here is the complete data for your records.</p>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div style="text-align:center;background:white;padding:14px 22px;border-radius:10px;min-width:90px"><p style="margin:0;font-size:12px;color:#6b7280">Sessions</p><p style="margin:6px 0 0;font-size:26px;font-weight:700;color:#7c3aed">${batch.sessions.length}</p></div>
+            <div style="text-align:center;background:white;padding:14px 22px;border-radius:10px;min-width:90px"><p style="margin:0;font-size:12px;color:#6b7280">Total Tx</p><p style="margin:6px 0 0;font-size:26px;font-weight:700;color:#374151">${allTx.length}</p></div>
+            <div style="text-align:center;background:white;padding:14px 22px;border-radius:10px;min-width:90px"><p style="margin:0;font-size:12px;color:#6b7280">Collected</p><p style="margin:6px 0 0;font-size:26px;font-weight:700;color:#16a34a">₹${totalCollected.toFixed(2)}</p></div>
+            <div style="text-align:center;background:white;padding:14px 22px;border-radius:10px;min-width:90px"><p style="margin:0;font-size:12px;color:#6b7280">Verified</p><p style="margin:6px 0 0;font-size:26px;font-weight:700;color:#16a34a">${verifiedCount}</p></div>
+            <div style="text-align:center;background:white;padding:14px 22px;border-radius:10px;min-width:90px"><p style="margin:0;font-size:12px;color:#6b7280">Pending</p><p style="margin:6px 0 0;font-size:26px;font-weight:700;color:#d97706">${pendingCount}</p></div>
+          </div>
+        </div>
+
+        <div style="padding:24px 32px">
+          <h2 style="margin:0 0 12px;font-size:15px;color:#374151">Sessions Summary</h2>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:#f1f5f9">
+                <th style="padding:9px 14px;text-align:left;color:#374151">#</th>
+                <th style="padding:9px 14px;text-align:left;color:#374151">Session</th>
+                <th style="padding:9px 14px;text-align:left;color:#374151">Fixed Amt</th>
+                <th style="padding:9px 14px;text-align:left;color:#374151">Payments</th>
+                <th style="padding:9px 14px;text-align:left;color:#374151">Collected</th>
+              </tr></thead>
+              <tbody>${sessionRows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No sessions in this batch.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="padding:0 32px 28px">
+          <h2 style="margin:0 0 12px;font-size:15px;color:#374151">All Transactions</h2>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:#f1f5f9">
+                <th style="padding:9px 12px;text-align:left">#</th>
+                <th style="padding:9px 12px;text-align:left">Name</th>
+                <th style="padding:9px 12px;text-align:left">Roll No</th>
+                <th style="padding:9px 12px;text-align:left">Amount</th>
+                <th style="padding:9px 12px;text-align:left">UTR</th>
+                <th style="padding:9px 12px;text-align:left">Session</th>
+                <th style="padding:9px 12px;text-align:left">Status</th>
+              </tr></thead>
+              <tbody>${txRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center">
+          <p style="margin:0;font-size:12px;color:#9ca3af">This is a permanent record of the deleted batch. Sessions within this batch remain archived in your dashboard.</p>
+        </div>
+      </div>
+    </body></html>`;
+
+    await transporter.sendMail({
+      from: `"Chocolate Fund" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject: `🗑️ Batch Deleted: "${batch.name}" — ${batch.sessions.length} sessions, ₹${totalCollected.toFixed(2)} total`,
+      html,
+    });
+  } catch (err: unknown) {
+    console.warn('Batch delete report email failed:', (err as Error).message);
+  }
+}

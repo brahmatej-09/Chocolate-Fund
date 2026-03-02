@@ -18,7 +18,7 @@ import {
   Plus, ChevronDown, ChevronUp, ExternalLink,
   CheckCircle2, XCircle, Loader2, FlaskConical,
   Clock, IndianRupee, Layers, CircleDot,
-  FolderOpen, Trophy, Medal
+  FolderOpen, Trophy, Medal, Trash2
 } from 'lucide-react';
 
 interface Session {
@@ -92,6 +92,25 @@ export default function Dashboard() {
   // Inline session creation inside a batch card
   const [batchSessionForms, setBatchSessionForms] = useState<Record<number, { title: string; amount: string; open: boolean }>>({});
   const [batchSessionCreating, setBatchSessionCreating] = useState<number | null>(null);
+
+  // Delete batch confirmation
+  const [deleteBatchConfirm, setDeleteBatchConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState(false);
+
+  const handleDeleteBatch = async () => {
+    if (!deleteBatchConfirm) return;
+    setDeletingBatch(true);
+    try {
+      await api.delete(`/batches/${deleteBatchConfirm.id}`);
+      toast.success(`Batch "${deleteBatchConfirm.name}" deleted. Summary emailed to you.`);
+      setBatches(prev => prev.filter(b => b.id !== deleteBatchConfirm.id));
+      setDeleteBatchConfirm(null);
+    } catch {
+      toast.error('Failed to delete batch.');
+    } finally {
+      setDeletingBatch(false);
+    }
+  };
 
   // Which batch cards are expanded to show sessions
   const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
@@ -740,6 +759,12 @@ export default function Dashboard() {
                       <Trophy size={13} />
                       View Rankings
                     </Button>
+                    <Button variant="outline" size="sm"
+                      onClick={() => setDeleteBatchConfirm({ id: batch.id, name: batch.name })}
+                      className="gap-1.5 text-xs text-red-600 border-red-200 hover:bg-red-50">
+                      <Trash2 size={13} />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -935,6 +960,39 @@ export default function Dashboard() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Batch Confirmation Dialog */}
+      <Dialog open={!!deleteBatchConfirm} onOpenChange={(open) => { if (!open && !deletingBatch) setDeleteBatchConfirm(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 size={18} />
+              Delete Batch
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-foreground">"{deleteBatchConfirm?.name}"</span>?
+              <br /><br />
+              A full summary of all sessions and transactions will be <span className="text-foreground font-medium">emailed to you</span> before deletion. Sessions in this batch will become unassigned but will not be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="destructive"
+              className="flex-1 gap-1.5"
+              onClick={handleDeleteBatch}
+              disabled={deletingBatch}
+            >
+              {deletingBatch ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {deletingBatch ? 'Deleting...' : 'Yes, Delete & Email Me'}
+            </Button>
+            <Button variant="outline" className="flex-1"
+              onClick={() => setDeleteBatchConfirm(null)}
+              disabled={deletingBatch}>
+              Cancel
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
