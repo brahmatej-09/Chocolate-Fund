@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Admin registered successfully', token, admin }, { status: 201 });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ message: 'Server error' }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ message: 'Server error', detail: message }, { status: 500 });
   }
 }
