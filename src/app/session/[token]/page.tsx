@@ -13,7 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import {
   CheckCircle2, Clock, Loader2, Send,
-  Smartphone, ListChecks, CandyIcon, Lock, XCircle
+  Smartphone, ListChecks, CandyIcon, Lock, XCircle,
+  Trophy, Medal, ChevronDown, FolderOpen
 } from 'lucide-react';
 
 interface Session {
@@ -23,15 +24,26 @@ interface Session {
   status: string;
   admin_name: string;
   upi_id: string | null;
+  batchId: number | null;
+  batchName: string | null;
 }
 
 interface Transaction {
   id: number;
   payer_name: string;
+  student_roll_no: string | null;
   amount: string;
   payment_time: string;
   verified: boolean;
   rejected: boolean;
+}
+
+interface Ranking {
+  rank: number;
+  rollNo: string;
+  name: string;
+  paidCount: number;
+  verifiedCount: number;
 }
 
 export default function PublicSession() {
@@ -44,10 +56,15 @@ export default function PublicSession() {
   const [loading, setLoading] = useState(true);
 
   // UTR submit form state
-  const [utrForm, setUtrForm] = useState({ payer_name: '', utr: '', amount: '' });
+  const [utrForm, setUtrForm] = useState({ payer_name: '', student_roll_no: '', utr: '', amount: '' });
   const [utrLoading, setUtrLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedWarning, setSubmittedWarning] = useState(false);
+
+  // Batch rankings
+  const [rankingsOpen, setRankingsOpen] = useState(false);
+  const [rankings, setRankings] = useState<{ totalSessions: number; rankings: Ranking[] } | null>(null);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
 
   // Pre-fill amount when session loads
   useEffect(() => {
@@ -56,65 +73,89 @@ export default function PublicSession() {
     }
   }, [session?.amount]);
 
+  const fetchRankings = async (batchId: number) => {
+    setRankingsLoading(true);
+    try {
+      const res = await api.get(`/batches/${batchId}/rankings`);
+      setRankings({ totalSessions: res.data.totalSessions, rankings: res.data.rankings });
+    } catch {
+      toast.error('Failed to load rankings');
+    } finally {
+      setRankingsLoading(false);
+    }
+  };
+
+  // 1. Fetch session data
   useEffect(() => {
     if (!token) return;
-    let channelName: string | null = null;
-
     const fetchSessionData = async () => {
       try {
         const res = await api.get(`/sessions/public/${token}`);
         setSession(res.data);
-
         const txRes = await api.get(`/transactions/${res.data.id}`);
         setTransactions(txRes.data.transactions);
         setTotalAmount(txRes.data.totalAmount);
-
-        // Subscribe to Pusher channel after getting session ID
-        channelName = `session-${res.data.id}`;
-        const pusher = getPusherClient();
-        const channel = pusher.subscribe(channelName);
-
-        channel.bind('new-payment', (data: { transaction: Transaction }) => {
-          setTransactions((prev) => [data.transaction, ...prev]);
-          setTotalAmount((prev) => prev + parseFloat(String(data.transaction.amount)));
-        });
-        channel.bind('total-updated', (data: { totalAmount: number }) => {
-          setTotalAmount(data.totalAmount);
-        });
-        channel.bind('session-closed', () => {
-          setSession((prev) => prev ? { ...prev, status: 'closed' } : null);
-          toast('This session has been closed.', { icon: '🔒' });
-        });
-        channel.bind('payment-verified', (data: { transactionId: number }) => {
-          setTransactions((prev) =>
-            prev.map((t) => (t.id === data.transactionId ? { ...t, verified: true } : t))
-          );
-        });
-        channel.bind('payment-rejected', (data: { transactionId: number }) => {
-          setTransactions((prev) => {
-            const tx = prev.find((t) => t.id === data.transactionId);
-            if (tx && !tx.rejected) {
-              setTotalAmount((total) => total - parseFloat(String(tx.amount)));
-            }
-            return prev.map((t) => (t.id === data.transactionId ? { ...t, rejected: true } : t));
-          });
-          toast('A submission was rejected by admin.', { icon: '❌' });
-        });
       } catch {
         toast.error('Session not found');
       } finally {
         setLoading(false);
       }
     };
-
     fetchSessionData();
+  }, [token]);
+
+  // 2. Pusher subscriptions — only runs after session is loaded
+  useEffect(() => {
+    if (!session?.id) return;
+    const pusher = getPusherClient();
+    const sessionChannel = pusher.subscribe(`session-${session.id}`);
+
+    sessionChannel.bind('new-payment', (data: { transaction: Transaction }) => {
+      setTransactions((prev) => [data.transaction, ...prev]);
+    });
+    sessionChannel.bind('total-updated', (data: { totalAmount: number }) => {
+      setTotalAmount(data.totalAmount);
+    });
+    sessionChannel.bind('session-closed', () => {
+      setSession((prev) => prev ? { ...prev, status: 'closed' } : null);
+      toast('This session has been closed.', { icon: '🔒' });
+    });
+    sessionChannel.bind('payment-verified', (data: { transactionId: number }) => {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === data.transactionId ? { ...t, verified: true } : t))
+      );
+    });
+    sessionChannel.bind('payment-rejected', (data: { transactionId: number }) => {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === data.transactionId ? { ...t, rejected: true } : t))
+      );
+      setTotalAmount((prev) => prev); // total-updated will follow from server
+      toast('A submission was rejected by admin.', { icon: '❌' });
+    });
 
     return () => {
-      if (channelName) {
-        getPusherClient().unsubscribe(channelName);
-      }
+      pusher.unsubscribe(`session-${session.id}`);
     };
-  }, [token]);
+  }, [session?.id]);
+
+  // 3. Batch channel for live rankings
+  useEffect(() => {
+    if (!session?.batchId) return;
+    const pusher = getPusherClient();
+    const batchChannel = pusher.subscribe(`batch-${session.batchId}`);
+    const batchId = session.batchId;
+
+    batchChannel.bind('rankings-updated', () => {
+      setRankings(prev => {
+        if (prev !== null) fetchRankings(batchId);
+        return prev;
+      });
+    });
+
+    return () => {
+      pusher.unsubscribe(`batch-${batchId}`);
+    };
+  }, [session?.batchId]);
 
   const handleUTRSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +164,7 @@ export default function PublicSession() {
       await api.post(`/transactions/submit/${token}`, utrForm);
       toast.success('Payment submitted! Admin will verify shortly.');
       setSubmitted(true);
-      setUtrForm({ payer_name: '', utr: '', amount: '' });
+      setUtrForm({ payer_name: '', student_roll_no: '', utr: '', amount: '' });
     } catch (error: any) {
       if (error.response) {
         // Server responded with an error — definitive failure
@@ -313,14 +354,14 @@ export default function PublicSession() {
                   <p className="font-semibold text-green-800 text-lg">Payment Submitted!</p>
                   <p className="text-sm text-green-600 mt-1">Waiting for admin to verify your payment.</p>
                   <Button variant="ghost" size="sm"
-                    onClick={() => { setSubmitted(false); setUtrForm({ payer_name: '', utr: '', amount: String(session?.amount ?? '') }); }}
+                    onClick={() => { setSubmitted(false); setUtrForm({ payer_name: '', student_roll_no: '', utr: '', amount: String(session?.amount ?? '') }); }}
                     className="mt-4 text-green-600 hover:text-green-700">
                     Submit another
                   </Button>
                 </div>
               )
             ) : (
-              <form onSubmit={handleUTRSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <form onSubmit={handleUTRSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="payer-name">Your Name *</Label>
                   <Input
@@ -332,14 +373,24 @@ export default function PublicSession() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="utr">UTR / Transaction ID *</Label>
+                  <Label htmlFor="roll-no">Roll Number *</Label>
+                  <Input
+                    id="roll-no"
+                    required
+                    placeholder="e.g. 22CS001"
+                    value={utrForm.student_roll_no}
+                    onChange={(e) => setUtrForm({ ...utrForm, student_roll_no: e.target.value.toUpperCase() })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="utr">UTR / Transaction ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
                   <Input
                     id="utr"
-                    required
                     placeholder="e.g. 4267XXXXXXXXXX"
                     value={utrForm.utr}
                     onChange={(e) => setUtrForm({ ...utrForm, utr: e.target.value.toUpperCase() })}
                   />
+                  <p className="text-xs text-muted-foreground">Find in your payment app after paying</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount Paid (₹)</Label>
@@ -359,7 +410,7 @@ export default function PublicSession() {
                   </div>
                   <p className="text-xs text-muted-foreground">Fixed at ₹{session.amount} for this session</p>
                 </div>
-                <div className="md:col-span-3">
+                <div className="md:col-span-2">
                   <Button type="submit" disabled={utrLoading} className="bg-primary hover:opacity-90 text-primary-foreground gap-2 w-full md:w-auto px-8">
                     {utrLoading ? <><Loader2 size={15} className="animate-spin" />Submitting...</> : <><Send size={15} />Submit Payment</>}
                   </Button>
@@ -367,6 +418,74 @@ export default function PublicSession() {
               </form>
             )}
           </CardContent>
+        </Card>
+      )}
+      {/* Batch Rankings Section */}
+      {session.batchId && (
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  <Trophy size={15} className="text-violet-500" />
+                  Batch Rankings
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <FolderOpen size={11} className="inline mr-1" />{session.batchName} — students ranked by payment count
+                </p>
+              </div>
+              <Button variant="outline" size="sm"
+                className="gap-1.5 text-xs text-violet-700 border-violet-200 hover:bg-violet-50"
+                onClick={() => {
+                  if (!rankingsOpen) {
+                    setRankingsOpen(true);
+                    if (!rankings) fetchRankings(session.batchId!);
+                  } else {
+                    setRankingsOpen(false);
+                  }
+                }}>
+                <ChevronDown size={13} className={`transition-transform ${rankingsOpen ? 'rotate-180' : ''}`} />
+                {rankingsOpen ? 'Hide' : 'Show Rankings'}
+              </Button>
+            </div>
+          </CardHeader>
+          {rankingsOpen && (
+            <CardContent className="pt-0">
+              {rankingsLoading ? (
+                <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-sm">Loading rankings...</span>
+                </div>
+              ) : rankings?.rankings.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">No payment data yet for this batch.</div>
+              ) : (
+                <div className="space-y-2">
+                  {rankings?.rankings.map((r) => (
+                    <div key={r.rollNo} className={`flex items-center justify-between rounded-lg px-3 py-2.5 border ${r.rank <= 3 ? 'border-violet-200 bg-violet-50/60' : 'border-border bg-muted/30'}`}>
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 text-center font-bold text-sm">
+                          {r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : `#${r.rank}`}
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{r.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{r.rollNo}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge className="bg-violet-100 text-violet-800 hover:bg-violet-100 border-0 gap-1 text-xs">
+                          <Medal size={10} />
+                          {r.paidCount} / {rankings?.totalSessions}
+                        </Badge>
+                        {r.verifiedCount > 0 && (
+                          <p className="text-[10px] text-green-600 mt-0.5">{r.verifiedCount} verified</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       )}
     </div>

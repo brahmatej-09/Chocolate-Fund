@@ -11,6 +11,13 @@ export async function GET(req: NextRequest) {
     const sessions = await prisma.session.findMany({
       where: { adminId: payload.id },
       orderBy: { createdAt: 'desc' },
+      include: {
+        batch: { select: { id: true, name: true } },
+        transactions: {
+          where: { verified: true, rejected: false },
+          select: { amount: true },
+        },
+      },
     });
 
     return NextResponse.json(sessions.map(s => ({
@@ -20,7 +27,10 @@ export async function GET(req: NextRequest) {
       date: s.date,
       status: s.status,
       public_token: s.publicToken,
+      batchId: s.batchId,
+      batchName: s.batch?.name ?? null,
       createdAt: s.createdAt,
+      totalCollected: s.transactions.reduce((sum, t) => sum + Number(t.amount), 0),
     })));
   } catch (err) {
     console.error(err);

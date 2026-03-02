@@ -12,13 +12,14 @@ export async function GET(
 
     const transactions = await prisma.transaction.findMany({
       where: { sessionId },
-      select: { id: true, payerName: true, amount: true, utr: true, paymentTime: true, verified: true, rejected: true },
+      select: { id: true, payerName: true, studentRollNo: true, amount: true, utr: true, paymentTime: true, verified: true, rejected: true },
       orderBy: { paymentTime: 'desc' },
     });
 
     const mapped = transactions.map((t: (typeof transactions)[number]) => ({
       id: t.id,
       payer_name: t.payerName,
+      student_roll_no: t.studentRollNo,
       amount: t.amount,
       utr: t.utr,
       payment_time: t.paymentTime,
@@ -44,7 +45,7 @@ export async function POST(
     if (!payload) return unauthorized();
 
     const sessionId = parseInt((await params).sessionId);
-    const { payer_name, amount } = await req.json();
+    const { payer_name, amount, student_roll_no } = await req.json();
 
     const session = await prisma.session.findFirst({ where: { id: sessionId, adminId: payload.id } });
     if (!session) return NextResponse.json({ message: 'Session not found or unauthorized' }, { status: 404 });
@@ -54,17 +55,20 @@ export async function POST(
     const fakeUtr = 'TEST_' + crypto.randomBytes(8).toString('hex').toUpperCase();
 
     const newTx = await prisma.transaction.create({
-      data: { sessionId, payerName: payer_name, amount: parseFloat(amount), utr: fakeUtr, verified: true },
+      data: { sessionId, payerName: payer_name, studentRollNo: student_roll_no?.trim() || null, amount: parseFloat(amount), utr: fakeUtr, verified: true },
     });
 
     const agg = await prisma.transaction.aggregate({ where: { sessionId, rejected: false }, _sum: { amount: true } });
     const totalAmount = parseFloat(String(agg._sum.amount ?? 0));
 
     const { pusherServer } = await import('@/lib/pusher');
-    const txPayload = { id: newTx.id, payer_name: newTx.payerName, amount: newTx.amount, utr: newTx.utr, payment_time: newTx.paymentTime, verified: newTx.verified, rejected: newTx.rejected };
+    const txPayload = { id: newTx.id, payer_name: newTx.payerName, student_roll_no: newTx.studentRollNo, amount: newTx.amount, utr: newTx.utr, payment_time: newTx.paymentTime, verified: newTx.verified, rejected: newTx.rejected };
     try {
       await pusherServer.trigger(`session-${sessionId}`, 'new-payment', { transaction: txPayload });
       await pusherServer.trigger(`session-${sessionId}`, 'total-updated', { totalAmount });
+      if (session.batchId) {
+        await pusherServer.trigger(`batch-${session.batchId}`, 'rankings-updated', {});
+      }
     } catch (pusherErr) {
       console.error('Pusher trigger failed (non-fatal):', pusherErr);
     }

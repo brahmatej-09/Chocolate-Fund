@@ -9,18 +9,25 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
-    const { payer_name, utr, amount } = await req.json();
+    const { payer_name, student_roll_no, utr, amount } = await req.json();
 
-    if (!payer_name || !utr || !amount) {
-      return NextResponse.json({ message: 'Name, UTR and amount are required' }, { status: 400 });
+    if (!payer_name || !amount) {
+      return NextResponse.json({ message: 'Name and amount are required' }, { status: 400 });
+    }
+    if (!student_roll_no?.trim()) {
+      return NextResponse.json({ message: 'Student roll number is required' }, { status: 400 });
     }
 
-    const utrClean = String(utr).trim().toUpperCase();
-    if (!/^[A-Z0-9]{8,22}$/.test(utrClean)) {
-      return NextResponse.json(
-        { message: 'Invalid UTR format. It should be 8–22 alphanumeric characters.' },
-        { status: 400 }
-      );
+    // UTR is optional — only validate if provided
+    let utrClean: string | null = null;
+    if (utr && String(utr).trim()) {
+      utrClean = String(utr).trim().toUpperCase();
+      if (!/^[A-Z0-9]{8,22}$/.test(utrClean)) {
+        return NextResponse.json(
+          { message: 'Invalid UTR format. It should be 8–22 alphanumeric characters.' },
+          { status: 400 }
+        );
+      }
     }
 
     const [session, dupCheck] = await Promise.all([
@@ -28,7 +35,9 @@ export async function POST(
         where: { publicToken: token },
         select: { id: true, adminId: true, title: true, amount: true, status: true },
       }),
-      prisma.transaction.findUnique({ where: { utr: utrClean }, select: { id: true } }),
+      utrClean
+        ? prisma.transaction.findUnique({ where: { utr: utrClean }, select: { id: true } })
+        : Promise.resolve(null),
     ]);
 
     if (!session) return NextResponse.json({ message: 'Session not found' }, { status: 404 });
@@ -52,14 +61,21 @@ export async function POST(
     }
 
     const newTx = await prisma.transaction.create({
-      data: { sessionId: session.id, payerName: payer_name.trim(), amount: submittedAmount, utr: utrClean, verified: false },
+      data: {
+        sessionId: session.id,
+        payerName: payer_name.trim(),
+        studentRollNo: student_roll_no.trim().toUpperCase(),
+        amount: submittedAmount,
+        utr: utrClean ?? undefined,
+        verified: false,
+      },
     });
 
     const aggregate = await prisma.transaction.aggregate({ where: { sessionId: session.id, rejected: false }, _sum: { amount: true } });
     const totalAmount = parseFloat(String(aggregate._sum.amount ?? 0));
 
     // Pusher real-time events (non-blocking — never crash the response)
-    const txPayload = { id: newTx.id, payer_name: newTx.payerName, amount: newTx.amount, utr: newTx.utr, payment_time: newTx.paymentTime, verified: newTx.verified, rejected: newTx.rejected };
+    const txPayload = { id: newTx.id, payer_name: newTx.payerName, student_roll_no: newTx.studentRollNo, amount: newTx.amount, utr: newTx.utr, payment_time: newTx.paymentTime, verified: newTx.verified, rejected: newTx.rejected };
     try {
       await pusherServer.trigger(`session-${session.id}`, 'new-payment', { transaction: txPayload });
       await pusherServer.trigger(`session-${session.id}`, 'total-updated', { totalAmount });

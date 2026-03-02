@@ -50,23 +50,9 @@ export async function GET(req: NextRequest) {
       try {
         await sendDailyReport(admin.email, admin.name, rows, today);
         sent++;
-
-        await prisma.transaction.deleteMany({
-          where: { id: { in: transactions.map((t: (typeof transactions)[number]) => t.id) } },
-        });
       } catch (emailErr: unknown) {
         console.error(`[CRON] Failed to send email to ${admin.email}:`, (emailErr as Error).message);
       }
-    }
-
-    // Clean up empty closed sessions older than 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const emptySessions = await prisma.session.findMany({
-      where: { status: 'closed', createdAt: { lt: sevenDaysAgo }, transactions: { none: {} } },
-      select: { id: true },
-    });
-    if (emptySessions.length > 0) {
-      await prisma.session.deleteMany({ where: { id: { in: emptySessions.map((s: (typeof emptySessions)[number]) => s.id) } } });
     }
 
     return NextResponse.json({ ok: true, sent });

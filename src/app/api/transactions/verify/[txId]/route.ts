@@ -22,13 +22,26 @@ export async function PATCH(
 
     const tx = await prisma.transaction.update({ where: { id: existing.id }, data: { verified: true } });
 
+    const [agg, session] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { sessionId: tx.sessionId, verified: true, rejected: false },
+        _sum: { amount: true },
+      }),
+      prisma.session.findUnique({ where: { id: tx.sessionId }, select: { batchId: true } }),
+    ]);
+    const totalAmount = parseFloat(String(agg._sum.amount ?? 0));
+
     try {
       await pusherServer.trigger(`session-${tx.sessionId}`, 'payment-verified', { transactionId: tx.id });
+      await pusherServer.trigger(`session-${tx.sessionId}`, 'total-updated', { totalAmount });
+      if (session?.batchId) {
+        await pusherServer.trigger(`batch-${session.batchId}`, 'rankings-updated', {});
+      }
     } catch (pusherErr) {
       console.error('Pusher trigger failed (non-fatal):', pusherErr);
     }
 
-    return NextResponse.json({ message: 'Transaction verified', transaction: tx });
+    return NextResponse.json({ message: 'Transaction verified', transaction: tx, totalAmount });
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : String(err);

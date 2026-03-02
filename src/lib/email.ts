@@ -11,7 +11,7 @@ const transporter = nodemailer.createTransport({
 interface TxRow {
   payer_name: string;
   amount: number | string;
-  utr: string;
+  utr: string | null;
   payment_time: Date | string;
   verified: boolean;
   rejected?: boolean;
@@ -37,7 +37,7 @@ export async function sendDailyReport(
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${t.payer_name}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">₹${parseFloat(String(t.amount)).toFixed(2)}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${t.utr}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${t.utr ?? '—'}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${t.session_title || '-'}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${new Date(t.payment_time).toLocaleTimeString('en-IN')}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">
@@ -113,7 +113,7 @@ export async function sendSessionClosedReport(
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">${t.payer_name}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#16a34a">₹${parseFloat(String(t.amount)).toFixed(2)}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:12px">${t.utr}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:12px">${t.utr ?? '—'}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280">${new Date(t.payment_time).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb">
             <span style="padding:2px 8px;border-radius:999px;font-size:11px;background:${t.rejected ? '#fee2e2' : t.verified ? '#dcfce7' : '#fef9c3'};color:${t.rejected ? '#991b1b' : t.verified ? '#166534' : '#713f12'}">

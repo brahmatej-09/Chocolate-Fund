@@ -58,23 +58,6 @@ export async function PATCH(
       });
     }
 
-    // Delete related activity logs for this session
-    await prisma.activityLog.deleteMany({
-      where: { adminId: payload.id, action: { contains: session.title } },
-    });
-
-    // Keep only the last 10 closed sessions per admin — delete oldest beyond that
-    const keep = await prisma.session.findMany({
-      where: { adminId: payload.id, status: 'closed' },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      select: { id: true },
-    });
-    const keepIds = keep.map((s: { id: number }) => s.id);
-    await prisma.session.deleteMany({
-      where: { adminId: payload.id, status: 'closed', id: { notIn: keepIds } },
-    });
-
     return NextResponse.json({ message: 'Session closed' });
   } catch (err) {
     console.error(err);

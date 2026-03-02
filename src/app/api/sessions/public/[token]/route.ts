@@ -13,6 +13,7 @@ export async function GET(
       where: { publicToken: token },
       include: {
         admin: { select: { name: true, upiId: true, qrImageUrl: true } },
+        batch: { select: { id: true, name: true } },
       },
     });
 
@@ -30,6 +31,8 @@ export async function GET(
       admin_name: session.admin.name,
       upi_id: session.admin.upiId ?? null,
       qr_image_url: session.admin.qrImageUrl ?? null,
+      batchId: session.batchId ?? null,
+      batchName: session.batch?.name ?? null,
     });
   } catch (err) {
     console.error(err);
