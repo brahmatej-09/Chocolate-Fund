@@ -93,6 +93,16 @@ export default function Dashboard() {
   const [batchSessionForms, setBatchSessionForms] = useState<Record<number, { title: string; amount: string; open: boolean }>>({});
   const [batchSessionCreating, setBatchSessionCreating] = useState<number | null>(null);
 
+  // Which batch cards are expanded to show sessions
+  const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
+  const toggleBatchExpand = (batchId: number) => {
+    setExpandedBatches(prev => {
+      const next = new Set(prev);
+      next.has(batchId) ? next.delete(batchId) : next.add(batchId);
+      return next;
+    });
+  };
+
   // Transactions panel per session
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Record<number, Transaction[]>>({});
@@ -307,10 +317,19 @@ export default function Dashboard() {
   };
 
   const toggleBatchForm = (batchId: number) => {
+    const willOpen = !(batchSessionForms[batchId]?.open);
     setBatchSessionForms(prev => ({
       ...prev,
-      [batchId]: { ...(prev[batchId] || { title: '', amount: '' }), open: !(prev[batchId]?.open) },
+      [batchId]: { ...(prev[batchId] || { title: '', amount: '' }), open: willOpen },
     }));
+    // Auto-expand the batch card when opening the add-session form
+    if (willOpen) {
+      setExpandedBatches(prev => {
+        const next = new Set(prev);
+        next.add(batchId);
+        return next;
+      });
+    }
   };
 
   const handleCreateBatchSession = async (e: React.FormEvent, batchId: number) => {
@@ -683,22 +702,32 @@ export default function Dashboard() {
             <FolderOpen size={16} className="text-violet-600" />
             Batches
           </h2>
-          {batches.map(batch => (
+          {batches.map(batch => {
+            const isExpanded = expandedBatches.has(batch.id);
+            return (
             <Card key={batch.id} className="border-border shadow-sm">
-              <CardHeader className="pb-2">
+              <CardHeader
+                className="pb-3 cursor-pointer select-none hover:bg-accent/30 transition-colors rounded-t-lg"
+                onClick={() => toggleBatchExpand(batch.id)}
+              >
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <FolderOpen size={15} className="text-violet-500" />
-                      {batch.name}
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-2 flex-wrap">
-                      <span>{batch.sessions.length} session{batch.sessions.length !== 1 ? 's' : ''}</span>
-                      <span className="text-muted-foreground/40">·</span>
-                      <span className="text-green-600 font-medium">₹{batch.totalCollected} collected</span>
-                    </CardDescription>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
+                      <ChevronDown size={16} className="text-muted-foreground" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FolderOpen size={15} className="text-violet-500" />
+                        {batch.name}
+                      </CardTitle>
+                      <CardDescription className="flex items-center gap-2 flex-wrap">
+                        <span>{batch.sessions.length} session{batch.sessions.length !== 1 ? 's' : ''}</span>
+                        <span className="text-muted-foreground/40">·</span>
+                        <span className="text-green-600 font-medium">₹{batch.totalCollected} collected</span>
+                      </CardDescription>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                     <Button variant="outline" size="sm"
                       onClick={() => toggleBatchForm(batch.id)}
                       className="gap-1.5 text-xs text-violet-700 border-violet-200 hover:bg-violet-50">
@@ -714,59 +743,62 @@ export default function Dashboard() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
-                {batchSessionForms[batch.id]?.open && (
-                  <form
-                    onSubmit={e => handleCreateBatchSession(e, batch.id)}
-                    className="flex gap-2 items-end flex-wrap p-4 border-b border-border bg-muted/30"
-                  >
-                    <div className="flex-1 min-w-[160px]">
-                      <Label className="text-xs mb-1 block">Session Title</Label>
-                      <Input
-                        placeholder="e.g., Late Fine - Feb 27"
-                        value={batchSessionForms[batch.id]?.title || ''}
-                        onChange={e => setBatchSessionForms(prev => ({ ...prev, [batch.id]: { ...prev[batch.id], title: e.target.value } }))}
-                        className="h-8 text-sm"
-                        required
-                      />
+              {isExpanded && (
+                <CardContent className="p-0">
+                  {batchSessionForms[batch.id]?.open && (
+                    <form
+                      onSubmit={e => handleCreateBatchSession(e, batch.id)}
+                      className="flex gap-2 items-end flex-wrap p-4 border-b border-border bg-muted/30"
+                    >
+                      <div className="flex-1 min-w-[160px]">
+                        <Label className="text-xs mb-1 block">Session Title</Label>
+                        <Input
+                          placeholder="e.g., Late Fine - Feb 27"
+                          value={batchSessionForms[batch.id]?.title || ''}
+                          onChange={e => setBatchSessionForms(prev => ({ ...prev, [batch.id]: { ...prev[batch.id], title: e.target.value } }))}
+                          className="h-8 text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-xs mb-1 block">Amount (₹)</Label>
+                        <Input
+                          type="number"
+                          placeholder="50"
+                          value={batchSessionForms[batch.id]?.amount || ''}
+                          onChange={e => setBatchSessionForms(prev => ({ ...prev, [batch.id]: { ...prev[batch.id], amount: e.target.value } }))}
+                          className="h-8 text-sm"
+                          required
+                        />
+                      </div>
+                      <Button type="submit" size="sm" className="h-8 gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                        disabled={batchSessionCreating === batch.id}>
+                        {batchSessionCreating === batch.id ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                        Create
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-8 text-xs"
+                        onClick={() => toggleBatchForm(batch.id)}>
+                        Cancel
+                      </Button>
+                    </form>
+                  )}
+                  {batch.sessions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm">
+                      <Layers size={28} className="mb-2 opacity-30" />
+                      No sessions yet — use "Add Session" to create one in this batch.
                     </div>
-                    <div className="w-24">
-                      <Label className="text-xs mb-1 block">Amount (₹)</Label>
-                      <Input
-                        type="number"
-                        placeholder="50"
-                        value={batchSessionForms[batch.id]?.amount || ''}
-                        onChange={e => setBatchSessionForms(prev => ({ ...prev, [batch.id]: { ...prev[batch.id], amount: e.target.value } }))}
-                        className="h-8 text-sm"
-                        required
-                      />
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {batch.sessions.map(session => (
+                        <SessionRow key={session.id} session={session} />
+                      ))}
                     </div>
-                    <Button type="submit" size="sm" className="h-8 gap-1 bg-violet-600 hover:bg-violet-700 text-white"
-                      disabled={batchSessionCreating === batch.id}>
-                      {batchSessionCreating === batch.id ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                      Create
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-8 text-xs"
-                      onClick={() => toggleBatchForm(batch.id)}>
-                      Cancel
-                    </Button>
-                  </form>
-                )}
-                {batch.sessions.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm">
-                    <Layers size={28} className="mb-2 opacity-30" />
-                    No sessions yet — use "Add Session" to create one in this batch.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {batch.sessions.map(session => (
-                      <SessionRow key={session.id} session={session} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
+                  )}
+                </CardContent>
+              )}
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
