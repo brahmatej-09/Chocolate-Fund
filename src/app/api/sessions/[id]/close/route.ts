@@ -42,9 +42,9 @@ export async function PATCH(
       }),
     ]);
 
-    // Send report email (non-blocking)
+    // Send report email (awaited — Vercel kills fire-and-forget before it completes)
     if (admin) {
-      sendSessionClosedReport(admin.email, admin.name, {
+      await sendSessionClosedReport(admin.email, admin.name, {
         sessionTitle: session.title,
         transactions: transactions.map((t: (typeof transactions)[number]) => ({
           payer_name: t.payerName,
