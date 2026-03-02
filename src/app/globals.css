@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.2s ease;
+}
+
+@layer base {
+  /* ── Light theme ─────────────────────────────── */
+  :root {
+    --background: 240 10% 97%;
+    --foreground: 240 10% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 263 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 94%;
+    --secondary-foreground: 240 10% 20%;
+    --muted: 240 5% 94%;
+    --muted-foreground: 240 5% 45%;
+    --accent: 263 70% 96%;
+    --accent-foreground: 263 70% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 263 70% 50%;
+    --radius: 0.625rem;
+    /* Custom */
+    --violet: 263 70% 50%;
+    --nav-bg: 0 0% 100% / 0.85;
+    --nav-border: 240 6% 90%;
+  }
+
+  /* ── Dark theme ──────────────────────────────── */
+  .dark {
+    --background: 224 15% 10%;
+    --foreground: 220 15% 93%;
+    --card: 224 15% 13%;
+    --card-foreground: 220 15% 93%;
+    --popover: 224 15% 13%;
+    --popover-foreground: 220 15% 93%;
+    --primary: 263 70% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 224 12% 18%;
+    --secondary-foreground: 220 15% 85%;
+    --muted: 224 12% 18%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 263 50% 22%;
+    --accent-foreground: 263 70% 80%;
+    --destructive: 0 62% 42%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 224 12% 20%;
+    --input: 224 12% 20%;
+    --ring: 263 70% 62%;
+    --nav-bg: 224 15% 10% / 0.9;
+    --nav-border: 224 12% 20%;
+  }
+
+  /* ── Black OLED theme ────────────────────────── */
+  .black {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 263 80% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 9%;
+    --secondary-foreground: 0 0% 85%;
+    --muted: 0 0% 9%;
+    --muted-foreground: 0 0% 50%;
+    --accent: 263 60% 15%;
+    --accent-foreground: 263 80% 78%;
+    --destructive: 0 75% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 263 80% 65%;
+    --nav-bg: 0 0% 0% / 0.95;
+    --nav-border: 0 0% 12%;
+  }
+}
+
+/* ── Smooth theme transition on all elements ──── */
+*, *::before, *::after {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease;
+}
+
+/* ── Scrollbar styling ───────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
